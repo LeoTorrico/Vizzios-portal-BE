@@ -30,10 +30,4 @@ export class EmployeeService {
   findAll() {
     return this.employeeRepo.find({ order: { createdAt: 'DESC' } });
   }
-
-  async findOne(id: string) {
-    const emp = await this.employeeRepo.findOne({ where: { id } });
-    if (!emp) throw new NotFoundException('Empleado no encontrado');
-    return emp;
-  }
 }

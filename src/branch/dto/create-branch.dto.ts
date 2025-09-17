@@ -1,1 +1,11 @@
-export class CreateBranchDto {}
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+
+export class CreateBranchDto {
+  @IsNotEmpty()
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
