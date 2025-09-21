@@ -39,7 +39,7 @@ export class AttendanceService {
 
     const attendance = this.attendanceRepo.create({
       employeeCarnet: employee.carnet,
-      branchId: employee.branchId, // lo tomamos del empleado
+      branchId: employee.branchId,
       type: dto.type,
       recordedAt,
       imageUrl: upload.secure_url,
