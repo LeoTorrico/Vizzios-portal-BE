@@ -1,10 +1,10 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Attendance } from './entities/attendance.entity';
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
-import { v2 as cloudinary } from 'cloudinary';
+import { v2 as Cloudinary } from 'cloudinary';
 
 @Injectable()
 export class AttendanceService {
@@ -13,10 +13,11 @@ export class AttendanceService {
     private attendanceRepo: Repository<Attendance>,
     @InjectRepository(Employee)
     private employeeRepo: Repository<Employee>,
+    @Inject('CLOUDINARY') private cloudinary: typeof Cloudinary,
   ) {}
 
   private async uploadToCloudinary(base64: string) {
-    const result = await cloudinary.uploader.upload(
+    const result = await this.cloudinary.uploader.upload(
       base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`,
       {
         folder: 'attendance_images',

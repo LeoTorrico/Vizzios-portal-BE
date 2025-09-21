@@ -24,7 +24,7 @@ export class Attendance {
   employee: Employee;
 
   @Column()
-  employeeCarnet: string; // ahora usamos carnet directamente
+  employeeCarnet: string;
 
   @ManyToOne(() => Branch, (branch) => branch.attendances, {
     onDelete: 'CASCADE',
