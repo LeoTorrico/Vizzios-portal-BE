@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: attendance_postgres
+    restart: always
+    ports:
+      - '5440:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: attendance_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - attendance_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: attendance_pgadmin
+    restart: always
+    ports:
+      - '5050:80'
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - attendance_network
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  attendance_network:
+    driver: bridge
