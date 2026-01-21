@@ -6,6 +6,10 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 export class BranchController {
   constructor(private service: BranchService) {}
 
+  @Get('health')
+  health() {
+    return { status: 'ok' };
+  }
   @Post()
   create(@Body() dto: CreateBranchDto) {
     return this.service.create(dto);
