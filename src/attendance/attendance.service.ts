@@ -1,9 +1,10 @@
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between, FindOptionsWhere } from 'typeorm';
 import { Attendance } from './entities/attendance.entity';
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
+import { FilterAttendanceDto } from './dto/filter-attendance.dto';
 import { v2 as Cloudinary } from 'cloudinary';
 
 @Injectable()
@@ -50,11 +51,40 @@ export class AttendanceService {
     return this.attendanceRepo.save(attendance);
   }
 
-  findAll() {
-    return this.attendanceRepo.find({
+  async findAll(params: FilterAttendanceDto) {
+    const { page = 1, limit = 10, startDate, endDate, branchId } = params;
+    const skip = (page - 1) * limit;
+    const where: FindOptionsWhere<Attendance> = {};
+
+    if (branchId) {
+      where.branchId = branchId;
+    }
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      where.recordedAt = Between(start, end);
+    }
+
+    const [data, total] = await this.attendanceRepo.findAndCount({
+      where,
       relations: ['employee', 'branch'],
       order: { recordedAt: 'DESC' },
+      take: limit,
+      skip: skip,
     });
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        lastPage: Math.ceil(total / limit),
+        limit,
+      },
+    };
   }
 
   findByBranch(branchId: string) {
