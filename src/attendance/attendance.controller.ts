@@ -12,6 +12,7 @@ import { AttendanceService } from './attendance.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { FilterAttendanceDto } from './dto/filter-attendance.dto';
 import { TerminalTokenGuard } from 'src/guard/terminal-token.guard';
+import { DashboardAttendanceDto } from './dto/dashboard-attendance.dto';
 
 @Controller('attendances')
 export class AttendanceController {
@@ -21,6 +22,11 @@ export class AttendanceController {
   @Post()
   create(@Body() dto: CreateAttendanceDto, @Req() req) {
     return this.service.create(dto, req.branchId);
+  }
+
+  @Get('dashboard')
+  getDashboard(@Query() params: DashboardAttendanceDto) {
+    return this.service.getDashboard(params);
   }
 
   @Get()
