@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, FindOptionsWhere } from 'typeorm';
-import { Attendance } from './entities/attendance.entity';
+import { Attendance, AttendanceType } from './entities/attendance.entity';
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { FilterAttendanceDto } from './dto/filter-attendance.dto';
@@ -38,12 +38,13 @@ export class AttendanceService {
     }
 
     const recordedAt = dto.recordedAt ? new Date(dto.recordedAt) : new Date();
+    const type = await this.resolveAttendanceType(dto.carnet, branchId);
     const upload = await this.uploadToCloudinary(dto.imageBase64);
 
     const attendance = this.attendanceRepo.create({
       employeeCarnet: employee.carnet,
       branchId,
-      type: dto.type,
+      type,
       recordedAt,
       imageUrl: upload.secure_url,
       rawName: upload.public_id,
@@ -94,5 +95,28 @@ export class AttendanceService {
       relations: ['employee'],
       order: { recordedAt: 'DESC' },
     });
+  }
+
+  private async resolveAttendanceType(
+    carnet: string,
+    branchId: string,
+  ): Promise<AttendanceType> {
+    const lastAttendance = await this.attendanceRepo.findOne({
+      where: {
+        employeeCarnet: carnet,
+        branchId,
+      },
+      order: {
+        recordedAt: 'DESC',
+      },
+    });
+
+    if (!lastAttendance) {
+      return AttendanceType.IN;
+    }
+
+    return lastAttendance.type === AttendanceType.IN
+      ? AttendanceType.OUT
+      : AttendanceType.IN;
   }
 }

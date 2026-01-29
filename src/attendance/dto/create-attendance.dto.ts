@@ -6,10 +6,6 @@ export class CreateAttendanceDto {
   @IsString()
   carnet: string;
 
-  @IsNotEmpty()
-  @IsEnum(AttendanceType)
-  type: AttendanceType;
-
   @IsOptional()
   @IsString()
   recordedAt?: string;
