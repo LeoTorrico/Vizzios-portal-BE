@@ -6,6 +6,7 @@ import {
   Param,
   UseGuards,
   Query,
+  Req,
 } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
@@ -18,8 +19,8 @@ export class AttendanceController {
 
   @UseGuards(TerminalTokenGuard)
   @Post()
-  create(@Body() dto: CreateAttendanceDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateAttendanceDto, @Req() req) {
+    return this.service.create(dto, req.branchId);
   }
 
   @Get()

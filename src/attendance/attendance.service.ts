@@ -28,10 +28,11 @@ export class AttendanceService {
     return result;
   }
 
-  async create(dto: CreateAttendanceDto) {
+  async create(dto: CreateAttendanceDto, branchId: string) {
     const employee = await this.employeeRepo.findOne({
       where: { carnet: dto.carnet },
     });
+
     if (!employee) {
       throw new BadRequestException('Empleado no encontrado');
     }
@@ -41,7 +42,7 @@ export class AttendanceService {
 
     const attendance = this.attendanceRepo.create({
       employeeCarnet: employee.carnet,
-      branchId: employee.branchId,
+      branchId,
       type: dto.type,
       recordedAt,
       imageUrl: upload.secure_url,

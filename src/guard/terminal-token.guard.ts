@@ -4,6 +4,7 @@ import {
   Injectable,
   ForbiddenException,
 } from '@nestjs/common';
+import { validate as isUUID } from 'uuid';
 
 @Injectable()
 export class TerminalTokenGuard implements CanActivate {
@@ -16,9 +17,11 @@ export class TerminalTokenGuard implements CanActivate {
       throw new ForbiddenException('Terminal token requerido');
     }
 
-    if (token !== process.env.TERMINAL_TOKEN) {
-      throw new ForbiddenException('Terminal no autorizada');
+    if (!isUUID(token)) {
+      throw new ForbiddenException('Token inválido');
     }
+
+    req.branchId = token;
 
     return true;
   }
