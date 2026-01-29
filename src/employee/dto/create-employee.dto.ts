@@ -3,7 +3,7 @@ import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 export class CreateEmployeeDto {
   @IsNotEmpty()
   @IsString()
-  carnet: string; // es el ID
+  carnet: string;
 
   @IsNotEmpty()
   @IsString()
@@ -12,8 +12,4 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   lastName?: string;
-
-  @IsNotEmpty()
-  @IsString()
-  branchId: string;
 }

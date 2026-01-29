@@ -22,9 +22,6 @@ export class Branch {
   @CreateDateColumn()
   createdAt: Date;
 
-  @OneToMany(() => Employee, (emp) => emp.branch)
-  employees: Employee[];
-
   @OneToMany(() => Attendance, (att) => att.branch)
   attendances: Attendance[];
 }
