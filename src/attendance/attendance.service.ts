@@ -141,70 +141,77 @@ export class AttendanceService {
       startDate,
       endDate,
       page = 1,
-      limit = 10,
+      limit = 20,
     } = params;
     const offset = (page - 1) * limit;
 
     // Construir WHERE dinámicamente
-    const conditions: string[] = ['a1."type" = \'IN\''];
+    const conditions: string[] = [];
     const queryParams: any[] = [];
     let paramIndex = 1;
 
     if (branchId) {
-      conditions.push(`a1."branchId" = $${paramIndex++}`);
+      conditions.push(`a."branchId" = $${paramIndex++}`);
       queryParams.push(branchId);
     }
 
     if (employeeCarnet) {
-      conditions.push(`a1."employeeCarnet" = $${paramIndex++}`);
+      conditions.push(`a."employeeCarnet" = $${paramIndex++}`);
       queryParams.push(employeeCarnet);
     }
 
     if (startDate && endDate) {
       conditions.push(
-        `a1."recordedAt" BETWEEN $${paramIndex++} AND $${paramIndex++}`,
+        `DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz') BETWEEN $${paramIndex++} AND $${paramIndex++}`,
       );
-      queryParams.push(new Date(startDate), new Date(endDate + ' 23:59:59'));
+      queryParams.push(startDate, endDate);
     }
 
-    const whereClause = conditions.join(' AND ');
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // Query optimizado
+    // Query SIN FILTER (compatible con todas las versiones de PostgreSQL)
     const dataQuery = `
-    WITH entrada_salida AS (
+    WITH attendances_with_next AS (
       SELECT 
-        DATE(a1."recordedAt") as fecha,
-        a1."employeeCarnet",
+        a."employeeCarnet",
+        a."type",
+        a."recordedAt",
+        DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz') as fecha_local,
         e."firstName",
         e."lastName",
-        a1."recordedAt" as entrada,
-        (
-          SELECT MIN(a2."recordedAt")
-          FROM attendances a2
-          WHERE a2."employeeCarnet" = a1."employeeCarnet"
-            AND DATE(a2."recordedAt") = DATE(a1."recordedAt")
-            AND a2."type" = 'OUT'
-            AND a2."recordedAt" > a1."recordedAt"
-        ) as salida
-      FROM attendances a1
-      INNER JOIN employees e ON e.carnet = a1."employeeCarnet"
-      WHERE ${whereClause}
+        LEAD(a."recordedAt") OVER (
+          PARTITION BY a."employeeCarnet", DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz')
+          ORDER BY a."recordedAt"
+        ) as siguiente_recordedAt,
+        LEAD(a."type") OVER (
+          PARTITION BY a."employeeCarnet", DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz')
+          ORDER BY a."recordedAt"
+        ) as siguiente_tipo
+      FROM attendances a
+      INNER JOIN employees e ON e.carnet = a."employeeCarnet"
+      ${whereClause}
+    ),
+    pares_entrada_salida AS (
+      SELECT 
+        fecha_local as date,
+        "employeeCarnet",
+        "firstName",
+        "lastName",
+        "recordedAt" as entrada,
+        siguiente_recordedAt as salida,
+        CASE 
+          WHEN siguiente_recordedAt IS NOT NULL AND siguiente_tipo = 'OUT'
+          THEN ROUND(EXTRACT(EPOCH FROM (siguiente_recordedAt - "recordedAt")) / 3600.0, 2)
+          ELSE NULL
+        END as "totalHoras"
+      FROM attendances_with_next
+      WHERE type = 'IN'
+        AND siguiente_tipo = 'OUT'
     )
-    SELECT 
-      fecha as date,
-      "employeeCarnet",
-      "firstName",
-      "lastName",
-      entrada,
-      salida,
-      CASE 
-        WHEN salida IS NOT NULL 
-        THEN ROUND(EXTRACT(EPOCH FROM (salida - entrada)) / 3600.0, 2)
-        ELSE NULL
-      END as "totalHoras"
-    FROM entrada_salida
-    WHERE salida IS NOT NULL
-    ORDER BY fecha DESC, "employeeCarnet" ASC
+    SELECT *
+    FROM pares_entrada_salida
+    ORDER BY date DESC, "employeeCarnet" ASC
     LIMIT $${paramIndex++}
     OFFSET $${paramIndex}
   `;
@@ -215,34 +222,34 @@ export class AttendanceService {
 
     // Contar total
     const countQuery = `
-    WITH entrada_salida AS (
+    WITH attendances_with_next AS (
       SELECT 
-        a1."employeeCarnet",
-        a1."recordedAt" as entrada,
-        (
-          SELECT MIN(a2."recordedAt")
-          FROM attendances a2
-          WHERE a2."employeeCarnet" = a1."employeeCarnet"
-            AND DATE(a2."recordedAt") = DATE(a1."recordedAt")
-            AND a2."type" = 'OUT'
-            AND a2."recordedAt" > a1."recordedAt"
-        ) as salida
-      FROM attendances a1
-      WHERE ${whereClause}
+        a."employeeCarnet",
+        a."type",
+        DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz') as fecha_local,
+        LEAD(a."type") OVER (
+          PARTITION BY a."employeeCarnet", DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz')
+          ORDER BY a."recordedAt"
+        ) as siguiente_tipo
+      FROM attendances a
+      ${whereClause}
     )
     SELECT COUNT(*) as total
-    FROM entrada_salida
-    WHERE salida IS NOT NULL
+    FROM attendances_with_next
+    WHERE type = 'IN' AND siguiente_tipo = 'OUT'
   `;
 
     const [{ total }] = await this.attendanceRepo.query(
       countQuery,
-      queryParams.slice(0, -2), // Sin limit y offset
+      queryParams.slice(0, -2),
     );
 
     return {
       data: data.map((row: any) => ({
-        date: row.date,
+        date:
+          row.date instanceof Date
+            ? row.date.toISOString().split('T')[0]
+            : row.date,
         employee: {
           carnet: row.employeeCarnet,
           firstName: row.firstName,
@@ -254,9 +261,9 @@ export class AttendanceService {
       })),
       meta: {
         total: parseInt(total),
-        page,
-        lastPage: Math.ceil(total / limit),
-        limit,
+        page: Number(page),
+        lastPage: Math.ceil(parseInt(total) / Number(limit)),
+        limit: Number(limit),
       },
     };
   }
