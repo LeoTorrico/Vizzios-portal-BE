@@ -11,11 +11,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     @InjectRepository(AdminUser)
     private adminUserRepo: Repository<AdminUser>,
   ) {
+    // ✅ Validar que JWT_SECRET exista
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!jwtSecret) {
+      throw new Error(
+        'JWT_SECRET no está definido en las variables de entorno. ' +
+          'Asegúrate de tener JWT_SECRET en tu archivo .env',
+      );
+    }
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey:
-        process.env.JWT_SECRET || 'your-super-secret-key-change-this',
+      secretOrKey: jwtSecret,
     });
   }
 

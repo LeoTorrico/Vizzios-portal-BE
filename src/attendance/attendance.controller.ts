@@ -13,6 +13,7 @@ import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { FilterAttendanceDto } from './dto/filter-attendance.dto';
 import { TerminalTokenGuard } from 'src/guard/terminal-token.guard';
 import { DashboardAttendanceDto } from './dto/dashboard-attendance.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('attendances')
 export class AttendanceController {
@@ -24,16 +25,19 @@ export class AttendanceController {
     return this.service.create(dto, req.branchId);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('dashboard')
   getDashboard(@Query() params: DashboardAttendanceDto) {
     return this.service.getDashboard(params);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
   findAll(@Query() params: FilterAttendanceDto) {
     return this.service.findAll(params);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('branch/:branchId')
   findByBranch(
     @Param('branchId') branchId: string,
