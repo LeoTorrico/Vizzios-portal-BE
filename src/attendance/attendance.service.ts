@@ -64,7 +64,15 @@ export class AttendanceService {
       rawName: upload.public_id,
     });
 
-    return this.attendanceRepo.save(attendance);
+    const savedAttendance = await this.attendanceRepo.save(attendance);
+    return {
+      ...savedAttendance,
+      message:
+        type === AttendanceType.IN
+          ? 'Entrada registrada correctamente'
+          : 'Salida registrada correctamente',
+      type,
+    };
   }
 
   async findAll(params: FilterAttendanceDto) {
