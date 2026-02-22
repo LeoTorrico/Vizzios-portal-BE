@@ -96,7 +96,7 @@ export class ReportsService {
     )
     SELECT 
       fecha_local as fecha,
-      TRIM(TO_CHAR(fecha_local, 'Day')) as "diaSemana",
+      EXTRACT(ISODOW FROM fecha_local) as "diaSemana",
       TO_CHAR(primera_entrada, 'HH24:MI:SS') as entrada,
       TO_CHAR(ultima_salida, 'HH24:MI:SS') as salida,
       ROUND(horas_reales, 2) as horas,
@@ -120,6 +120,15 @@ export class ReportsService {
     const diasTrabajados = desglose.length; // Cuenta días con al menos una marca
     const promedioDiario =
       diasCompletos.length > 0 ? totalHoras / diasCompletos.length : 0;
+    const nombresDias = [
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo',
+    ];
 
     return {
       employee: {
@@ -138,7 +147,8 @@ export class ReportsService {
         fecha:
           day.fecha instanceof Date
             ? day.fecha.toISOString().split('T')[0]
-            : day.fecha, // Manejo seguro de fecha
+            : day.fecha,
+        diaSemana: nombresDias[Number(day.diaSemana) - 1],
         horas: parseFloat(day.horas),
       })),
     };
