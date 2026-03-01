@@ -2,6 +2,7 @@ export interface TopEmployee {
   carnet: string;
   nombre: string;
   horas: number;
+  diasVacacion?: number;
 }
 
 export interface BranchReport {

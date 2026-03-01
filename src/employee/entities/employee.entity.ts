@@ -6,6 +6,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Attendance } from '../../attendance/entities/attendance.entity';
+import { Vacation } from '../../vacation/entities/vacation.entity';
 
 @Entity('employees')
 export class Employee {
@@ -20,6 +21,9 @@ export class Employee {
 
   @OneToMany(() => Attendance, (att) => att.employee)
   attendances: Attendance[];
+
+  @OneToMany(() => Vacation, (vac) => vac.employee)
+  vacations: Vacation[];
 
   @CreateDateColumn()
   createdAt: Date;

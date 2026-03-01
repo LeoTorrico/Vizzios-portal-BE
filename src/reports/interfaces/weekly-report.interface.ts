@@ -5,6 +5,7 @@ export interface DayDetail {
   salida: string | null;
   horas: number;
   incompleto: boolean;
+  status: 'TRABAJADO' | 'VACACIONES' | 'AUSENCIA' | 'INCOMPLETO';
 }
 
 export interface WeeklyReportResponse {

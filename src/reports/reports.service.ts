@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Attendance } from '../attendance/entities/attendance.entity';
 import { Employee } from '../employee/entities/employee.entity';
 import { Branch } from '../branch/entities/branch.entity';
+import { Vacation } from '../vacation/entities/vacation.entity';
 import { WeeklyReportDto } from './dto/weekly-report.dto';
 import { MonthlyReportDto } from './dto/monthly-report.dto';
 import {
@@ -25,7 +26,9 @@ export class ReportsService {
     private employeeRepo: Repository<Employee>,
     @InjectRepository(Branch)
     private branchRepo: Repository<Branch>,
-  ) {}
+    @InjectRepository(Vacation)
+    private vacationRepo: Repository<Vacation>,
+  ) { }
 
   /**
    * Genera reporte semanal de un empleado
@@ -111,6 +114,13 @@ export class ReportsService {
 
     const desglose = await this.attendanceRepo.query(query, params);
 
+    // Consultar vacaciones que se crucen con esta semana
+    const vacations = await this.vacationRepo.createQueryBuilder('v')
+      .where('v.employeeCarnet = :carnet', { carnet: employeeCarnet })
+      .andWhere('v.startDate <= :end', { end: weekEndDate })
+      .andWhere('v.endDate >= :start', { start: weekStartDate })
+      .getMany();
+
     // Cálculos finales en JS
     const diasCompletos = desglose.filter((d) => !d.incompleto);
     const totalHoras = diasCompletos.reduce(
@@ -130,6 +140,47 @@ export class ReportsService {
       'Domingo',
     ];
 
+    // Generar exactamente los 7 días
+    const finalDesglose: DayDetail[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStartDate + 'T00:00:00'); // Evitar timezone issues
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().split('T')[0];
+
+      // Buscar si hay registro de asistencia
+      const workedDay = desglose.find(day => {
+        const f = day.fecha instanceof Date ? day.fecha.toISOString().split('T')[0] : day.fecha;
+        return f === dateStr;
+      });
+
+      if (workedDay) {
+        finalDesglose.push({
+          ...workedDay,
+          fecha: dateStr,
+          diaSemana: nombresDias[Number(workedDay.diaSemana) - 1],
+          horas: parseFloat(workedDay.horas),
+          status: workedDay.incompleto ? 'INCOMPLETO' : 'TRABAJADO'
+        });
+        continue;
+      }
+
+      // Si no hay asistencia, checar vacaciones
+      const isVacation = vacations.some(v => dateStr >= v.startDate && dateStr <= v.endDate);
+
+      let dow = d.getDay(); // 0(Dom) a 6(Sab)
+      dow = dow === 0 ? 7 : dow; // postgres: 1 a 7 (L a D)
+
+      finalDesglose.push({
+        fecha: dateStr,
+        diaSemana: nombresDias[dow - 1],
+        entrada: null,
+        salida: null,
+        horas: 0,
+        incompleto: false,
+        status: isVacation ? 'VACACIONES' : 'AUSENCIA'
+      });
+    }
+
     return {
       employee: {
         carnet: employee.carnet,
@@ -142,15 +193,7 @@ export class ReportsService {
         promedioDiario: Math.round(promedioDiario * 100) / 100,
         diasTrabajados,
       },
-      desglose: desglose.map((day) => ({
-        ...day,
-        fecha:
-          day.fecha instanceof Date
-            ? day.fecha.toISOString().split('T')[0]
-            : day.fecha,
-        diaSemana: nombresDias[Number(day.diaSemana) - 1],
-        horas: parseFloat(day.horas),
-      })),
+      desglose: finalDesglose,
     };
   }
 
@@ -285,6 +328,30 @@ export class ReportsService {
           month,
         ]);
 
+        const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const monthEnd = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+        for (const e of topEmpleados) {
+          const vacs = await this.vacationRepo.createQueryBuilder('v')
+            .where('v.employeeCarnet = :carnet', { carnet: e.carnet })
+            .andWhere('v.startDate <= :end', { end: monthEnd })
+            .andWhere('v.endDate >= :start', { start: monthStart })
+            .getMany();
+
+          let diasVacacion = 0;
+          for (const v of vacs) {
+            const s = v.startDate < monthStart ? monthStart : v.startDate;
+            const e_date = v.endDate > monthEnd ? monthEnd : v.endDate;
+
+            const startD = new Date(s + 'T00:00:00');
+            const endD = new Date(e_date + 'T00:00:00');
+            const diffDays = Math.ceil((endD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            diasVacacion += diffDays;
+          }
+          e.diasVacacion = diasVacacion;
+        }
+
         return {
           branchId: branch.branchId,
           branchName: branch.branchName,
@@ -294,6 +361,7 @@ export class ReportsService {
           topEmpleados: topEmpleados.map((e) => ({
             ...e,
             horas: parseFloat(e.horas),
+            diasVacacion: e.diasVacacion,
           })),
         };
       }),
