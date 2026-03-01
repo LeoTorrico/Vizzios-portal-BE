@@ -6,6 +6,7 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { ReportsModule } from './reports/reports.module';
+import { VacationModule } from './vacation/vacation.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ReportsModule } from './reports/reports.module';
     AttendanceModule,
     AuthModule,
     ReportsModule,
+    VacationModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }
