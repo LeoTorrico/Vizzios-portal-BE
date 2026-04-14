@@ -7,6 +7,7 @@ import { Branch } from '../branch/entities/branch.entity';
 import { Vacation } from '../vacation/entities/vacation.entity';
 import { WeeklyReportDto } from './dto/weekly-report.dto';
 import { MonthlyReportDto } from './dto/monthly-report.dto';
+import { MonthlyEmployeeReportDto } from './dto/monthly-employee-report.dto';
 import {
   WeeklyReportResponse,
   DayDetail,
@@ -16,6 +17,7 @@ import {
   BranchReport,
   TopEmployee,
 } from './interfaces/monthly-report.interface';
+import { MonthlyEmployeeReportResponse } from './interfaces/monthly-employee-report.interface';
 
 @Injectable()
 export class ReportsService {
@@ -188,6 +190,179 @@ export class ReportsService {
         lastName: employee.lastName,
       },
       week: { startDate: weekStartDate, endDate: weekEndDate },
+      summary: {
+        totalHoras: Math.round(totalHoras * 100) / 100,
+        promedioDiario: Math.round(promedioDiario * 100) / 100,
+        diasTrabajados,
+      },
+      desglose: finalDesglose,
+    };
+  }
+
+  /**
+   * Genera reporte mensual de un empleado
+   * Calcula desde primera entrada hasta última salida por día en todo el mes
+   */
+  async getMonthlyEmployeeReport(
+    dto: MonthlyEmployeeReportDto,
+  ): Promise<MonthlyEmployeeReportResponse> {
+    const { employeeCarnet, year, month, branchId } = dto;
+
+    const employee = await this.employeeRepo.findOne({
+      where: { carnet: employeeCarnet },
+    });
+
+    if (!employee) throw new NotFoundException('Empleado no encontrado');
+
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const monthEnd = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+
+    const query = `
+    WITH raw_marks AS (
+      SELECT 
+        a."recordedAt" AT TIME ZONE 'America/La_Paz' as marca_local,
+        a.type,
+        DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz') as fecha_local
+      FROM attendances a
+      WHERE a."employeeCarnet" = $1
+        AND DATE(a."recordedAt" AT TIME ZONE 'America/La_Paz') BETWEEN $2 AND $3
+        ${branchId ? 'AND a."branchId" = $4' : ''}
+    ),
+    pairs AS (
+      SELECT 
+        fecha_local,
+        marca_local as entrada,
+        LEAD(marca_local) OVER (ORDER BY marca_local) as salida,
+        type as tipo_entrada,
+        LEAD(type) OVER (ORDER BY marca_local) as tipo_salida
+      FROM raw_marks
+    ),
+    daily_stats AS (
+      SELECT 
+        fecha_local,
+        MIN(entrada) as primera_entrada,
+        MAX(CASE WHEN tipo_entrada = 'OUT' THEN entrada ELSE salida END) as ultima_salida,
+        SUM(
+          CASE 
+            WHEN tipo_entrada = 'IN' 
+                 AND tipo_salida = 'OUT' 
+                 AND DATE(entrada) = DATE(salida)
+            THEN EXTRACT(EPOCH FROM (salida - entrada)) / 3600.0
+            ELSE 0
+          END
+        ) as horas_reales,
+        BOOL_OR(tipo_entrada = 'IN' AND (tipo_salida IS NULL OR tipo_salida = 'IN' OR DATE(salida) != DATE(entrada))) as tiene_incompleto
+      FROM pairs
+      WHERE tipo_entrada = 'IN' OR tipo_entrada = 'OUT'
+      GROUP BY fecha_local
+    )
+    SELECT 
+      fecha_local as fecha,
+      EXTRACT(ISODOW FROM fecha_local) as "diaSemana",
+      TO_CHAR(primera_entrada, 'HH24:MI:SS') as entrada,
+      TO_CHAR(ultima_salida, 'HH24:MI:SS') as salida,
+      ROUND(horas_reales, 2) as horas,
+      tiene_incompleto as incompleto
+    FROM daily_stats
+    ORDER BY fecha ASC
+    `;
+
+    const params = branchId
+      ? [employeeCarnet, monthStart, monthEnd, branchId]
+      : [employeeCarnet, monthStart, monthEnd];
+
+    const desglose = await this.attendanceRepo.query(query, params);
+
+    // Consultar vacaciones que se crucen con este mes
+    const vacations = await this.vacationRepo.createQueryBuilder('v')
+      .where('v.employeeCarnet = :carnet', { carnet: employeeCarnet })
+      .andWhere('v.startDate <= :end', { end: monthEnd })
+      .andWhere('v.endDate >= :start', { start: monthStart })
+      .getMany();
+
+    const diasCompletos = desglose.filter((d: any) => !d.incompleto);
+    const totalHoras = diasCompletos.reduce(
+      (sum: number, d: any) => sum + (parseFloat(d.horas) || 0),
+      0,
+    );
+    const diasTrabajados = desglose.length;
+    const promedioDiario =
+      diasCompletos.length > 0 ? totalHoras / diasCompletos.length : 0;
+    const nombresDias = [
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+      'Domingo',
+    ];
+
+    const finalDesglose: DayDetail[] = [];
+    for (let i = 0; i < lastDay; i++) {
+      const d = new Date(`${monthStart}T00:00:00`);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().split('T')[0];
+
+      const workedDay = desglose.find((day: any) => {
+        const f = day.fecha instanceof Date ? day.fecha.toISOString().split('T')[0] : day.fecha;
+        return f === dateStr;
+      });
+
+      if (workedDay) {
+        finalDesglose.push({
+          ...workedDay,
+          fecha: dateStr,
+          diaSemana: nombresDias[Number(workedDay.diaSemana) - 1],
+          horas: parseFloat(workedDay.horas),
+          status: workedDay.incompleto ? 'INCOMPLETO' : 'TRABAJADO'
+        });
+        continue;
+      }
+
+      const isVacation = vacations.some((v: any) => dateStr >= v.startDate && dateStr <= v.endDate);
+
+      let dow = d.getDay();
+      dow = dow === 0 ? 7 : dow; // postgres 1 a 7
+
+      finalDesglose.push({
+        fecha: dateStr,
+        diaSemana: nombresDias[dow - 1],
+        entrada: null,
+        salida: null,
+        horas: 0,
+        incompleto: false,
+        status: isVacation ? 'VACACIONES' : 'AUSENCIA'
+      });
+    }
+
+    const monthNames = [
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
+    ];
+
+    return {
+      employee: {
+        carnet: employee.carnet,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+      },
+      period: { 
+        year, 
+        month, 
+        monthName: monthNames[month - 1] 
+      },
       summary: {
         totalHoras: Math.round(totalHoras * 100) / 100,
         promedioDiario: Math.round(promedioDiario * 100) / 100,

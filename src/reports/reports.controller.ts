@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { WeeklyReportDto } from './dto/weekly-report.dto';
 import { MonthlyReportDto } from './dto/monthly-report.dto';
+import { MonthlyEmployeeReportDto } from './dto/monthly-employee-report.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('reports')
@@ -12,6 +13,11 @@ export class ReportsController {
   @Get('weekly')
   getWeeklyReport(@Query() dto: WeeklyReportDto) {
     return this.reportsService.getWeeklyReport(dto);
+  }
+
+  @Get('monthly-employee')
+  getMonthlyEmployeeReport(@Query() dto: MonthlyEmployeeReportDto) {
+    return this.reportsService.getMonthlyEmployeeReport(dto);
   }
 
   @Get('monthly')
